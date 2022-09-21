@@ -1,9 +1,10 @@
 'use strict';
 
 async function main() {
-	const gameElement = document.querySelector("game-app").shadowRoot.querySelector("game-theme-manager").querySelector("#game");
-	const rows = gameElement.querySelector("#board").children;
-	const ENTER = new CustomEvent("game-key-press", {detail: {key: "Enter"}});
+	const gameElement = document.querySelector("#wordle-app-game");
+	const keyboard = Array.from(gameElement.querySelectorAll("button[data-key]"));
+	const enter = keyboard.find(button => button.getAttribute("data-key") === "↵");
+	const allTiles = gameElement.querySelectorAll("div[data-state]");
 
 	function letterEvent(letter) { return new CustomEvent("game-key-press", {detail: {key: letter}}); }
 
@@ -13,7 +14,7 @@ async function main() {
 	const WEIGHT_YELLOW = 0.75;
 	const WEIGHT_BLACK = 0;
 	const WEIGHT_ENTROPY = 1;
-	const WEIGHT_POPULARITY = 0.9;
+	const WEIGHT_POPULARITY = 0.5;
 
 	const ALL_WORDS = new Map();
 
@@ -25,17 +26,17 @@ async function main() {
 	}
 
 	async function loadWords() {
+		/* Procedure: place all words  */
 		const wordsUrl = chrome.runtime.getURL("data/words.txt");
 		const wordsResponse = await fetch(wordsUrl);
-		const words = await wordsResponse.text();
+		const words = (await wordsResponse.text()).split("\n");
 
 		const popularityUrl = chrome.runtime.getURL("data/popularity.txt");
 		const popularityResponse = await fetch(popularityUrl);
-		const popularity = await popularityResponse.text();
-		const popularWords = popularity.split("\n");
+		const popularWords = (await popularityResponse.text()).split("\n");
 
 		const ALL_WORDS_SET = new Set();
-		for (const word of words.split("\n")) ALL_WORDS_SET.add(word);
+		for (const word of words) ALL_WORDS_SET.add(word);
 		for (let index = 0; index < popularWords.length; index++) {
 			const word = popularWords[index].trim();  // I don't know why, okay?
 			if (!ALL_WORDS_SET.has(word)) continue;
@@ -66,23 +67,22 @@ async function main() {
 			return this.attempts.length >= MAX_ATTEMPTS;
 		}
 
-		playTurn() {
+		async playTurn() {
 			const guess = this.guesser.getGuess();
 			if (guess === undefined) return false;
-			const response = this.codemaker.getResponse(guess);
+			const response = await this.codemaker.getResponse(guess);
 			this.attempts.push( {guess: guess, response: response} );
 		}
 
 		async loop() {
 			while (true) {
-				const canContinue = this.playTurn();
+				const canContinue = await this.playTurn();
 				if (canContinue === false) return;
 				if (this.didWin) break;
 				else if (this.didLose) {
 					alert("Sorry, I couldn't figure this one out"); 
 					break;
 				}
-				await sleep(2000);
 			}
 		}
 	}
@@ -104,9 +104,15 @@ async function main() {
 				alert("No words found");
 				return;
 			}
-			// guesses.sort((a, b) => (new Set(a).length / a.length) - (new Set(b).length / b.length));
-			// guesses.sort((a, b) => ALL_WORDS.get(a) - ALL_WORDS.get(b));
-			arraySort(guesses, (word) => (new Set(word).size / word.length)*WEIGHT_ENTROPY + (ALL_WORDS.get(word))*WEIGHT_POPULARITY);
+			arraySort(guesses, function(word) {
+				// duplicity = reverse of entropy (0-1): less is better
+				let duplicity = word.length / new Set(word).size;
+				// popularity = ranking: (0-1), less is better (eg, 1st place)
+				let popularity = ALL_WORDS.get(word)/ALL_WORDS.size;
+				// [0, 1] + [0, 1] = [0, 2]
+				let result = duplicity*WEIGHT_ENTROPY + popularity*WEIGHT_POPULARITY;
+				return result;
+			});
 			return guesses[0];
 		}
 	}
@@ -115,6 +121,7 @@ async function main() {
 		constructor(game) { this.game = game; }
 
 		static simulateResponse(code, guess) {
+			/* Returns a response for [guess] using Wordle's format, as if [code] is the word. */
 			const result = Array(ATTEMPT_LENGTH);
 			const mapping = new Map();
 
@@ -145,14 +152,24 @@ async function main() {
 			return result;
 		}
 
-		getResponse(guess) {
+		async getResponse(guess) {
 			/* Enters the word and reads the Wordle page for the response */
-			const row = rows[this.game.attempts.length];
+			// Enter each letter by pressing on the on-screen (GUI) keyboard
+			const row = this.game.attempts.length;
 			for (const letter of guess) {
-				gameElement.dispatchEvent(letterEvent(letter));
+				const key = keyboard.find(button => button.getAttribute("data-key") === letter);
+				key.click();
 			}
-			gameElement.dispatchEvent(ENTER);
-			const response = Array.from(row.shadowRoot.children[1].children).map(tile => tile.attributes["evaluation"].value);
+			enter.click();
+			await sleep(2500);	
+
+			// Read all the tiles that correspond to the response
+			const response = [];
+			for (let letter = 0; letter < guess.length; letter++) {
+				const tile = allTiles[row*guess.length + letter];
+				const tileResponse = tile.getAttribute("data-state");
+				response.push(tileResponse);
+			}
 			return response;
 		}
 	}
