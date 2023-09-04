@@ -1,0 +1,29 @@
+{
+  "name": "wordle-solver",
+  "version": "1.0.0",
+  "description": "A Chrome extension to solve Wordle puzzles. It types them in for you, no terminal or debug console required!",
+  "main": "src/solver.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "."
+  },
+  "keywords": [
+    "wordle",
+    "puzzle",
+    "solver",
+    "chrome",
+    "extension"
+  ],
+  "author": "Levi Lesches",
+  "license": "ISC",
+  "devDependencies": {
+    "eslint": "^8.48.0",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-import": "^2.28.1",
+    "eslint-plugin-n": "^16.0.2",
+    "eslint-plugin-promise": "^6.1.1"
+  }
+}
